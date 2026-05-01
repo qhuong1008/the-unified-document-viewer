@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"net/http"
 	"the-unified-document-viewer/internal/repository"
 	"the-unified-document-viewer/internal/worker"
 
@@ -8,26 +9,46 @@ import (
 )
 
 type VehicleDigitalVaultHandler struct {
-	repo     *repository.PostgresRepository
-	jobQueue chan worker.Job
+	Repo     *repository.PostgresRepository
+	JobQueue chan worker.Job
 }
 
 func (h *VehicleDigitalVaultHandler) GetVehicleHistory(c *gin.Context) {
     vin := c.Param("vin")
     if vin == "" {
-        c.JSON(400, gin.H{"error": "VIN is required"})
+        c.JSON(http.StatusBadRequest, gin.H{"error": "VIN is required"})
         return
     }
 
-    docs, err := h.repo.GetVehicleDigitalVaultByVIN(vin)
+// Check if VIN exists in database
+    exists, count, err := h.Repo.CheckIfVINExists(vin)
     if err != nil {
-        c.JSON(500, gin.H{"error": "Internal server error"})
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
         return
     }
 
-		c.JSON(200, gin.H{
+    // If no records exist, return 404
+    if !exists {
+        c.JSON(http.StatusNotFound, gin.H{
+            "vin": vin,
+            "exists": false,
+            "message": "No documents found for this VIN",
+        })
+        return
+    }
+
+// Get all documents for this VIN
+    docs, err := h.Repo.GetVehicleDigitalVaultByVIN(vin)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+        return
+    }
+
+    // Return success with documents
+    c.JSON(http.StatusOK, gin.H{
         "vin": vin,
-        "total_documents": len(docs),
+        "exists": true,
+        "total_documents": count,
         "documents": docs,
     })
 }

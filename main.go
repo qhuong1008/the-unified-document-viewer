@@ -4,7 +4,8 @@ import (
 	"log"
 	"the-unified-document-viewer/internal/api"
 	"the-unified-document-viewer/internal/database"
-	"the-unified-document-viewer/internal/repository" // Thêm import này
+	"the-unified-document-viewer/internal/handlers"
+	"the-unified-document-viewer/internal/repository"
 	"the-unified-document-viewer/internal/worker"
 
 	"github.com/gin-gonic/gin"
@@ -40,10 +41,10 @@ func main() {
 	r.POST("/webhooks/sales", handler.HandleSalesWebhook)
 	r.POST("/webhooks/service", handler.HandleServiceWebhook)
 
-	// Route lấy dữ liệu đã hợp nhất (Sẽ triển khai ở bước sau)
-// Thay thế dòng comment bằng:
-vaultHandler := handler.VehicleDigitalVaultHandler{repo: repository}
-r.GET("/vault/:vin", vaultHandler.GetVehicleHistory)
+// Route lấy dữ liệu đã hợp nhất (Sẽ triển khai ở bước sau)
+	// Thay thế dòng comment bằng:
+vaultHandler := &handlers.VehicleDigitalVaultHandler{Repo: repository}
+	r.GET("/vault/:vin", vaultHandler.GetVehicleHistory)
 	log.Println("Server đang chạy tại port :8080...")
 	r.Run(":8080")
 }

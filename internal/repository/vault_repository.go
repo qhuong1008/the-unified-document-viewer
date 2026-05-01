@@ -29,11 +29,25 @@ func (r *PostgresRepository) UpsertVaultRecord(data models.VehicleDigitalVault) 
 func (r *PostgresRepository) GetVehicleDigitalVaultByVIN(vin string) ([]models.VehicleDigitalVault, error) {
     var documents []models.VehicleDigitalVault
     
-    result := r.db.Where("vin = ?", vin).Order("event_date DESC").Find(&documents)
+    // Fixed: Use synced_at (or created_at) instead of non-existent event_date column
+    result := r.db.Where("vin = ?", vin).Order("synced_at DESC").Find(&documents)
     
     if result.Error != nil {
         return nil, result.Error
     }
     
     return documents, nil
+}
+
+// CheckIfVINExists checks if any records exist for a given VIN
+func (r *PostgresRepository) CheckIfVINExists(vin string) (bool, int64, error) {
+    var count int64
+    
+    result := r.db.Model(&models.VehicleDigitalVault{}).Where("vin = ?", vin).Count(&count)
+    
+    if result.Error != nil {
+        return false, 0, result.Error
+    }
+    
+    return count > 0, count, nil
 }
