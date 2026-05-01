@@ -1,24 +1,27 @@
-// internal/worker/transformer.go
 package worker
 
 import (
-	"fmt"
+	"strings"
 	"the-unified-document-viewer/internal/models"
 	"time"
 
 	"github.com/google/uuid"
 )
 
+func sanitizeUTF8(s string) string {
+	return strings.ToValidUTF8(s, " ")
+}
+
 func MapSalesToVault(raw models.RawSalesData) models.VehicleDigitalVault {
 	return models.VehicleDigitalVault{
 		ID:           uuid.New(),
-		ExternalID:   fmt.Sprintf("SALES-%d", raw.ID), 
-		VIN:          raw.VehicleVIN,
-		SourceSystem: "SALES",
-		Title:        fmt.Sprintf("Sales Contract: %s", raw.DocumentType),
-		DocCategory:  "Commercial", 
-		EventDate:    raw.CreatedAt, 
-		FileURL:      raw.FileURL,
+		ExternalID:   sanitizeUTF8(raw.ID),
+		SourceSystem: string(SourceSales),
+		VIN:          sanitizeUTF8(raw.VehicleVIN),
+		Title:        sanitizeUTF8("Sales Contract"),
+		SalesPerson:  sanitizeUTF8(raw.SalesPerson),
+		SalesDocumentIssueDate:  raw.CreatedAt,
+		FileURL:      sanitizeUTF8(raw.FileURL),
 		SyncedAt:     time.Now(),
 	}
 }
@@ -26,13 +29,13 @@ func MapSalesToVault(raw models.RawSalesData) models.VehicleDigitalVault {
 func MapServiceToVault(raw models.RawServiceData) models.VehicleDigitalVault {
 	return models.VehicleDigitalVault{
 		ID:           uuid.New(),
-		ExternalID:   fmt.Sprintf("SERVICE-%d", raw.ID),
-		VIN:          raw.VehicleVIN,
-		SourceSystem: "SERVICE",
-		Title:        fmt.Sprintf("Service Report: %s", raw.ServiceType),
-		DocCategory:  "Technical", 
-		EventDate:    raw.CompletionDate, 
-		FileURL:      raw.ReportLink,
+		ExternalID:   sanitizeUTF8(raw.ID),
+		SourceSystem: string(SourceService),
+		VIN:          sanitizeUTF8(raw.VehicleVIN),
+		Title:        sanitizeUTF8("Service Report"),
+		Technician:   sanitizeUTF8(raw.Technician),
+		ServiceCompletionDate:  raw.CompletionDate,
+		FileURL:      sanitizeUTF8(raw.ReportLink),
 		SyncedAt:     time.Now(),
 	}
-}
+}	

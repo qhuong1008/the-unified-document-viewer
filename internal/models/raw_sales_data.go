@@ -8,7 +8,7 @@ type RawSalesData struct {
 	ID           string    `json:"id"`            // Unique identifier from Sales System
 	VehicleVIN   string    `json:"vin"`           // 17-character Vehicle Identification Number
 	DocumentType string    `json:"document_type"` // e.g., "Sales Contract", "Invoice"
-	Salesperson  string    `json:"salesperson"`   // The staff member who handled the sale
+	SalesPerson  string    `json:"sales_person"`   // The staff member who handled the sale
 	CreatedAt    time.Time `json:"created_at"`    // Timestamp of document issuance
 	FileURL      string    `json:"file_url"`      // Path to the original source document
 }
