@@ -8,6 +8,7 @@ import (
 	"the-unified-document-viewer/internal/repository"
 	"the-unified-document-viewer/internal/worker"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
@@ -33,6 +34,13 @@ func main() {
 
 	// 5. Khởi tạo REST API với Gin
 	r := gin.Default()
+    // Cấu hình cho phép origin từ Vite
+    r.Use(cors.New(cors.Config{
+        AllowOrigins:     []string{"http://localhost:5173"},
+        AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE"},
+        AllowHeaders:     []string{"Origin", "Content-Type"},
+        AllowCredentials: true,
+    }))
 	
 	// Inject jobQueue vào handler để đẩy job từ Webhook sang Worker
 	handler := &api.WebhookHandler{JobQueue: jobQueue}
@@ -41,10 +49,8 @@ func main() {
 	r.POST("/webhooks/sales", handler.HandleSalesWebhook)
 	r.POST("/webhooks/service", handler.HandleServiceWebhook)
 
-// Route lấy dữ liệu đã hợp nhất (Sẽ triển khai ở bước sau)
-	// Thay thế dòng comment bằng:
-vaultHandler := &handlers.VehicleDigitalVaultHandler{Repo: repository}
-	r.GET("/vault/:vin", vaultHandler.GetVehicleHistory)
-	log.Println("Server đang chạy tại port :8080...")
-	r.Run(":8080")
+	vaultHandler := &handlers.VehicleDigitalVaultHandler{Repo: repository}
+		r.GET("/vault/:vin", vaultHandler.GetVehicleHistory)
+		log.Println("Server đang chạy tại port :8080...")
+		r.Run(":8080")
 }
