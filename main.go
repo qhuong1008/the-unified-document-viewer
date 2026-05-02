@@ -2,9 +2,14 @@ package main
 
 import (
 	"log"
+	"time"
+
 	"the-unified-document-viewer/internal/api"
+	"the-unified-document-viewer/internal/auth"
 	"the-unified-document-viewer/internal/database"
 	"the-unified-document-viewer/internal/handlers"
+	"the-unified-document-viewer/internal/middleware"
+	"the-unified-document-viewer/internal/models"
 	"the-unified-document-viewer/internal/repository"
 	"the-unified-document-viewer/internal/worker"
 
@@ -13,44 +18,66 @@ import (
 )
 
 func main() {
-	// 1. Khởi tạo kết nối PostgreSQL
 	dsn := "host=localhost user=postgres password=postgres dbname=the_unified_document_viewer port=5432 sslmode=disable"
 	db, err := database.InitDB(dsn)
 	if err != nil {
 		log.Fatalf("Không thể kết nối Database: %v", err)
 	}
 
-	// 2. Khởi tạo Repository Layer
-	// Đây là nơi chứa logic Upsert để chống trùng lặp dữ liệu (Idempotency)
-	repository := repository.NewPostgresRepository(db)
+	vaultRepo := repository.NewPostgresRepository(db)
 
-	// 3. Thiết lập hàng đợi công việc (Job Queue)
-	// Buffer 100 giúp hệ thống chịu được các đợt bùng nổ request (burst traffic)
+	userRepo := repository.NewUserRepository(db)
+	if err := userRepo.AutoMigrate(); err != nil {
+		log.Printf("Warning: Failed to auto-migrate users table: %v", err)
+	}
+
+	defaultUsername := "admin"
+	_, err = userRepo.FindByUsername(defaultUsername)
+	if err != nil {
+		hashedPassword, _ := auth.HashPassword("admin123")
+		defaultUser := &models.User{
+			Username: defaultUsername,
+			Password: hashedPassword,
+		}
+		if err := userRepo.Create(defaultUser); err != nil {
+			log.Printf("Warning: Failed to create default user: %v", err)
+		} else {
+			log.Println("Created default admin user (username: admin, password: admin123)")
+		}
+	}
+
+	jwtManager := auth.NewJWTManager("your-secret-key-here", 24*time.Hour)
+
 	jobQueue := make(chan worker.Job, 100)
 
-	// 4. Khởi chạy Worker Pool
-	// Quan trọng: Truyền repo vào để Worker có thể lưu dữ liệu sau khi Transform & Enrich
-	worker.StartWorkerPool(jobQueue, 5, repository)
+	worker.StartWorkerPool(jobQueue, 5, vaultRepo)
 
-	// 5. Khởi tạo REST API với Gin
 	r := gin.Default()
-    // Cấu hình cho phép origin từ Vite
-    r.Use(cors.New(cors.Config{
-        AllowOrigins:     []string{"http://localhost:5173"},
-        AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE"},
-        AllowHeaders:     []string{"Origin", "Content-Type"},
-        AllowCredentials: true,
-    }))
-	
-	// Inject jobQueue vào handler để đẩy job từ Webhook sang Worker
-	handler := &api.WebhookHandler{JobQueue: jobQueue}
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:5173"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		AllowCredentials: true,
+	}))
 
-	// Route tiếp nhận dữ liệu từ các hệ thống nguồn (Scenario D)
-	r.POST("/webhooks/sales", handler.HandleSalesWebhook)
-	r.POST("/webhooks/service", handler.HandleServiceWebhook)
+	webhookHandler := &api.WebhookHandler{JobQueue: jobQueue}
+	authHandler := api.NewAuthHandler(jwtManager, userRepo)
+	vaultHandler := &handlers.VehicleDigitalVaultHandler{Repo: vaultRepo}
 
-	vaultHandler := &handlers.VehicleDigitalVaultHandler{Repo: repository}
-		r.GET("/vault/:vin", vaultHandler.GetVehicleHistory)
-		log.Println("Server đang chạy tại port :8080...")
-		r.Run(":8080")
+	r.POST("/auth/login", authHandler.Login)
+	r.POST("/auth/refresh", authHandler.RefreshToken)
+
+	protected := r.Group("/")
+	protected.Use(middleware.JWTMiddleware(jwtManager))
+	{
+		protected.POST("/webhooks/sales", webhookHandler.HandleSalesWebhook)
+		protected.POST("/webhooks/service", webhookHandler.HandleServiceWebhook)
+		protected.GET("/vault/:vin", vaultHandler.GetVehicleHistory)
+	}
+
+	// Public proxy endpoint to bypass CORS when accessing external files
+	r.GET("/file-proxy", api.FileProxyHandler())
+
+	log.Println("Server đang chạy tại port :8080...")
+	r.Run(":8080")
 }

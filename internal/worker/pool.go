@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"the-unified-document-viewer/internal/models"
 	"the-unified-document-viewer/internal/repository"
-	"time"
 )
 
 // StartWorkerPool initializes N workers for parallel processing
@@ -31,9 +30,9 @@ func ExecuteJob(workerID int, job Job, repository *repository.PostgresRepository
 
 	// Add 5-second timeout to test parallel execution
 	fmt.Printf("[Worker %d] [TIMEOUT] Starting 5-second processing delay...\n", workerID)
-	time.Sleep(5 * time.Second)
+	// time.Sleep(5 * time.Second)
 	fmt.Printf("[Worker %d] [TIMEOUT] Finished 5-second delay\n", workerID)
-
+fmt.Printf("vaultData: %+v ", vaultData)
 	// Bước 2: Enrichment
 	EnrichVaultData(&vaultData)
 

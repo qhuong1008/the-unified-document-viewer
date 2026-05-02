@@ -42,7 +42,6 @@ func main() {
 		"https://placehold.jp/24/cccccc/ffffff/1000x1400.pdf?text=Service_Report_030",
 	}
 
-	// Example usage
 	fmt.Printf("Generated %d mock PDF links.\n", len(mockPDFLinks))
 	fmt.Println("First link:", mockPDFLinks[0])
 }
