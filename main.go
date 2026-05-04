@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"log"
 	"time"
 
+	"the-unified-document-viewer/internal/adapter"
 	"the-unified-document-viewer/internal/api"
 	"the-unified-document-viewer/internal/auth"
 	"the-unified-document-viewer/internal/database"
@@ -12,12 +14,35 @@ import (
 	"the-unified-document-viewer/internal/models"
 	"the-unified-document-viewer/internal/repository"
 	"the-unified-document-viewer/internal/worker"
+	"the-unified-document-viewer/pkg/telemetry"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
+	// ============================================================
+	// Initialize OpenTelemetry
+	// ============================================================
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	tp, err := telemetry.InitTracer(ctx, "unified-document-viewer")
+	if err != nil {
+		log.Printf("Warning: Failed to initialize telemetry: %v", err)
+		// Continue without telemetry if initialization fails
+	} else {
+		log.Println("OpenTelemetry initialized successfully")
+		defer func() {
+			if err := tp.Shutdown(ctx); err != nil {
+				log.Printf("Error shutting down tracer provider: %v", err)
+			}
+		}()
+	}
+
+	// ============================================================
+	// Database initialization
+	// ============================================================
 	dsn := "host=localhost user=postgres password=postgres dbname=the_unified_document_viewer port=5432 sslmode=disable"
 	db, err := database.InitDB(dsn)
 	if err != nil {
@@ -60,9 +85,20 @@ func main() {
 		AllowCredentials: true,
 	}))
 
+	// ============================================================
+	// Add Telemetry Middleware
+	// ============================================================
+	r.Use(telemetry.TelemetryMiddleware())
+
 	webhookHandler := &api.WebhookHandler{JobQueue: jobQueue}
 	authHandler := api.NewAuthHandler(jwtManager, userRepo)
-	vaultHandler := &handlers.VehicleDigitalVaultHandler{Repo: vaultRepo}
+
+	salesAdapter := adapter.NewSalesServiceAdapter("https://mock-api.com")
+	vaultHandler := &handlers.VehicleDigitalVaultHandler{
+		Repo:     vaultRepo,
+		JobQueue: jobQueue,
+		Adapter:  salesAdapter,
+	}
 
 	r.POST("/auth/login", authHandler.Login)
 	r.POST("/auth/refresh", authHandler.RefreshToken)
@@ -73,6 +109,7 @@ func main() {
 		protected.POST("/webhooks/sales", webhookHandler.HandleSalesWebhook)
 		protected.POST("/webhooks/service", webhookHandler.HandleServiceWebhook)
 		protected.GET("/vault/:vin", vaultHandler.GetVehicleHistory)
+		protected.POST("/vault/search", vaultHandler.SearchAndSyncByVIN)
 	}
 
 	// Public proxy endpoint to bypass CORS when accessing external files
@@ -81,3 +118,4 @@ func main() {
 	log.Println("Server đang chạy tại port :8080...")
 	r.Run(":8080")
 }
+
