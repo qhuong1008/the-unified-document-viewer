@@ -19,6 +19,7 @@ func MapSalesToVault(raw models.RawSalesData) models.VehicleDigitalVault {
 		SourceSystem: string(SourceSales),
 		VIN:          sanitizeUTF8(raw.VehicleVIN),
 		Title:        sanitizeUTF8("Sales Contract"),
+		DocCategory:  "Commercial",
 		SalesPerson:  sanitizeUTF8(raw.SalesPerson),
 		SalesDocumentIssueDate:  raw.CreatedAt,
 		FileURL:      sanitizeUTF8(raw.FileURL),
@@ -33,9 +34,11 @@ func MapServiceToVault(raw models.RawServiceData) models.VehicleDigitalVault {
 		SourceSystem: string(SourceService),
 		VIN:          sanitizeUTF8(raw.VehicleVIN),
 		Title:        sanitizeUTF8("Service Report"),
+		DocCategory:  "Technical",
 		Technician:   sanitizeUTF8(raw.Technician),
 		ServiceCompletionDate:  raw.CompletionDate,
 		FileURL:      sanitizeUTF8(raw.ReportLink),
 		SyncedAt:     time.Now(),
 	}
-}	
+}
+
