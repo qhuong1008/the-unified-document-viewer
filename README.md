@@ -7,7 +7,9 @@
 
 ## Overview
 
-The Unified Document Viewer is a backend API service for managing vehicle digital vaults. It processes sales and service webhooks, enriches vehicle data asynchronously using worker pools, and provides VIN-based search endpoints. Built with Go, Gin, PostgreSQL, JWT auth, and OpenTelemetry for tracing.
+The Unified Document Viewer is a backend API service for managing vehicle digital vaults. It processes sales and service webhooks, enriches vehicle data asynchronously using worker pools, and provides VIN-based search endpoints. Built with Go, Gin, PostgreSQL (persistent DB), JWT auth, and OpenTelemetry for tracing.
+
+**RESTful API**: Fully exposed on `http://localhost:8080`. Uses JWT Bearer token auth for protected routes.
 
 **Default Credentials:**
 
@@ -44,7 +46,7 @@ go mod tidy
   ```sql
   CREATE DATABASE IF NOT EXISTS "the_unified_document_viewer";
   ```
-- The app auto-migrates tables and creates default `admin` user on first run.
+- The app auto-migrates tables (`vehicle_digital_vaults`, `users`) and creates default `admin` user on first run.
 
 **DSN used by app:** `host=localhost user=postgres password=postgres dbname=the_unified_document_viewer port=5432 sslmode=disable`
 
@@ -57,7 +59,6 @@ docker compose up -d
 ```
 
 - Jaeger UI: http://localhost:16686
-- This exposes OTLP ports for tracing.
 
 ### 5. Run Backend Server
 
@@ -66,67 +67,92 @@ go run main.go
 ```
 
 - Server starts on `http://localhost:8080`
-- Logs confirm DB connection, default user creation, and OTEL init.
+
+## API Contract & Test Harness (cURL Examples)
+
+Use these to test without frontend. Get JWT token first.
+
+### 1. Login & Get Token
+
+```bash
+LOGIN_RESPONSE=$(curl -s -X POST http://localhost:8080/auth/login \
+  -H \"Content-Type: application/json\" \
+  -d '{\"username\":\"admin\",\"password\":\"admin123\"}')
+
+ACCESS_TOKEN=$(echo $LOGIN_RESPONSE | jq -r .token)
+echo \"Access Token: $ACCESS_TOKEN\"
+```
+
+### 2. Search & Sync VIN (Protected)
+
+```bash
+curl -X POST http://localhost:8080/vault/search \
+  -H \"Content-Type: application/json\" \
+  -H \"Authorization: Bearer $ACCESS_TOKEN\" \
+  -d '{\"vin\":\"1HGCM82633A004352\"}'
+```
+
+**Response**: `{ \"vin\": \"...\", \"exists\": true, \"total_documents\": N, \"documents\": [...], \"sales_fetched\": true, \"service_fetched\": true }`
+
+### 3. Get Vehicle History by VIN (Protected)
+
+```bash
+curl -X GET \"http://localhost:8080/vault/1HGCM82633A004352\" \
+  -H \"Authorization: Bearer $ACCESS_TOKEN\"
+```
+
+### 4. Mock Webhook (Sales - Protected)
+
+```bash
+curl -X POST http://localhost:8080/webhooks/sales \
+  -H \"Content-Type: application/json\" \
+  -H \"Authorization: Bearer $ACCESS_TOKEN\" \
+  -d '{\"vin\":\"1HGCM82633A004352\",\"sales_data\":{}}'
+```
+
+**Full Endpoint List**:
+| Method | Endpoint | Auth | Description |
+|--------|-----------------------|--------|-------------|
+| POST | `/auth/login` | No | Login (JSON: `{username, password}`) |
+| POST | `/auth/refresh` | No | Refresh token |
+| POST | `/webhooks/sales` | Yes | Sales webhook |
+| POST | `/webhooks/service` | Yes | Service webhook |
+| GET | `/vault/:vin` | Yes | Get vault by VIN |
+| POST | `/vault/search` | Yes | Search/sync VIN |
 
 ## Frontend Setup (Separate Repo)
 
-1. Clone the frontend repo: https://github.com/qhuong1008/the-unified-document-viewer-ui
-2. Navigate to frontend dir:
-   ```bash
-   cd frontend-repo
-   npm i
-   npm run dev
-   ```
-3. UI opens on `http://localhost:5173` (Vite dev server).
+1. Clone frontend repo
+2. `npm i && npm run dev` → http://localhost:5173
+3. Login & search VIN.
 
 ## Testing the Application
 
-1. **Start all services:**
-   - Telemetry: `docker compose up -d`
-   - Backend: `go run main.go` (in backend dir)
-   - Frontend: `npm run dev` (in frontend dir)
-
-2. **Access Frontend:** Open http://localhost:5173
-3. **Login:** Username `admin`, Password `admin123`
-4. **Test Search:**
-   - In search bar, enter a **valid VIN** (e.g., `1HGCM82633A004352` - replace with actual test VIN)
-   - Click **Search** button
-   - Watch results: Data syncs via workers; check Jaeger UI for traces
-5. **Verify Backend Logs:** Webhooks, job processing, DB queries.
-
-## Telemetry Dashboard
-
-- Open Jaeger UI: http://localhost:16686
-- Search for traces from `unified-document-viewer` service.
+1. Start: `docker compose up -d && go run main.go`
+2. Test with cURL above or frontend.
+3. Check Jaeger for traces, backend logs for jobs/DB.
 
 ## Troubleshooting
 
-| Issue                    | Solution                                                               |
-| ------------------------ | ---------------------------------------------------------------------- |
-| DB connection failed     | Ensure Postgres running, run `CREATE DATABASE` script, check DSN creds |
-| CORS errors              | Frontend must run on `localhost:5173`                                  |
-| No traces in Jaeger      | Restart `docker compose up -d`, check app logs for OTEL init           |
-| Default user not created | Check backend logs; manual insert via pgAdmin if needed                |
-| Workers not processing   | Verify job queue in logs                                               |
-
-## Development Scripts
-
-- `test_script.sh`, `test_script2.sh`: Run custom tests (chmod +x && ./test_script.sh)
+| Issue            | Solution                        |
+| ---------------- | ------------------------------- |
+| DB connection    | Run DB script, check DSN        |
+| 401 Unauthorized | Get fresh token via login cURL  |
+| CORS             | Allowed `localhost:5173`        |
+| No traces        | Restart Docker, check OTEL logs |
 
 ## Architecture
 
 ```
-Webhooks (Sales/Service) → API → Job Queue → Workers (Enrich/Transform) → Postgres Vault
-Frontend → Auth → VIN Search → Vault Repo
-OTEL → Collector → Jaeger
+Webhooks → API (Gin) → Job Queue → Workers → Postgres (GORM)
+OTEL → Jaeger
 ```
 
 ## Contributing
 
-1. Fork & PR
-2. Run `go test ./...`
-3. Update README for changes
+- `go test ./...`
+- Update README
 
 ---
 
-_Built with ❤️ using Go, Gin, GORM, and OpenTelemetry_
+_Built with ❤️ using Go, Gin, GORM, PostgreSQL, OpenTelemetry_
